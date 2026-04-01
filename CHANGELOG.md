@@ -2,6 +2,12 @@
 
 Docs: https://docs.openclaw.ai
 
+## Unreleased
+
+### Fixes
+
+- Agents/Anthropic: honor explicit `cacheRetention` for custom providers using `anthropic-messages`, so Anthropic-compatible proxy providers can reuse prompt caching when they opt in. (#59049) Thanks @wwerst and @vincentkoc.
+
 ## 2026.3.31
 
 ### Breaking
