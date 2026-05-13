@@ -18,7 +18,12 @@ export async function checkGatewayHealth(params: {
   runtime: RuntimeEnv;
   cfg: OpenClawConfig;
   timeoutMs?: number;
+  skipGatewayConnect?: boolean;
 }) {
+  if (params.skipGatewayConnect === true) {
+    note("Skipped gateway connection check (--skip-gateway-connect).", "Gateway");
+    return { healthOk: false };
+  }
   const gatewayDetails = buildGatewayConnectionDetails({ config: params.cfg });
   const timeoutMs =
     typeof params.timeoutMs === "number" && params.timeoutMs > 0 ? params.timeoutMs : 10_000;

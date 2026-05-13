@@ -25,6 +25,11 @@ export function registerMaintenanceCommands(program: Command) {
     .option("--non-interactive", "Run without prompts (safe migrations only)", false)
     .option("--generate-gateway-token", "Generate and configure a gateway token", false)
     .option("--deep", "Scan system services for extra gateway installs", false)
+    .option(
+      "--skip-gateway-connect",
+      "Skip the gateway WebSocket connection check (useful at boot before the gateway is up)",
+      false,
+    )
     .action(async (opts) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         await doctorCommand(defaultRuntime, {
@@ -35,6 +40,7 @@ export function registerMaintenanceCommands(program: Command) {
           nonInteractive: Boolean(opts.nonInteractive),
           generateGatewayToken: Boolean(opts.generateGatewayToken),
           deep: Boolean(opts.deep),
+          skipGatewayConnect: Boolean(opts.skipGatewayConnect),
         });
         defaultRuntime.exit(0);
       });

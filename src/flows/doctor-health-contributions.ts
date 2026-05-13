@@ -408,6 +408,7 @@ async function runGatewayHealthChecks(ctx: DoctorHealthFlowContext): Promise<voi
     runtime: ctx.runtime,
     cfg: ctx.cfg,
     timeoutMs: ctx.options.nonInteractive === true ? 3000 : 10_000,
+    skipGatewayConnect: ctx.options.skipGatewayConnect,
   });
   ctx.healthOk = healthOk;
   ctx.gatewayMemoryProbe = healthOk
