@@ -26,6 +26,33 @@ import { findNormalizedProviderValue } from "./provider-id.js";
 
 const log = createSubsystemLogger("agents/model-providers");
 
+// Per-plugin/per-order startup trace.  When
+// ``OPENCLAW_GATEWAY_STARTUP_TRACE=true`` is set the gateway logs
+// ``startup trace: prewarm.*`` lines from ``server-startup-post-attach
+// .ts``; this helper drills one level deeper so that the operator can
+// see, for example, that ``prewarm.plugin.late.ollama`` is the
+// dominant call inside ``prewarm.ensure-models-json``.  The output
+// goes through ``log.info`` so the line carries the ``[agents/model-
+// providers]`` subsystem prefix, but the ``startup trace:`` substring
+// still matches the existing log-marker grep in
+// ``deploy/koloclaw/gateway-listeners-ready.sh`` and the audit
+// pipeline.  Gated on the env var so production gateway boots are
+// not noisy.
+function isPrewarmTraceEnabled(env: NodeJS.ProcessEnv | undefined): boolean {
+  const raw = (env ?? process.env).OPENCLAW_GATEWAY_STARTUP_TRACE?.toString().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function emitPrewarmTrace(
+  env: NodeJS.ProcessEnv | undefined,
+  name: string,
+  durationMs: number,
+): void {
+  if (isPrewarmTraceEnabled(env)) {
+    log.info(`startup trace: prewarm.${name} ${durationMs.toFixed(1)}ms`);
+  }
+}
+
 const PROVIDER_IMPLICIT_MERGERS: Partial<
   Record<
     string,
@@ -243,6 +270,7 @@ async function resolvePluginImplicitProviders(
       };
     };
 
+    const pluginStart = performance.now();
     const result = await runProviderCatalogWithTimeout({
       provider,
       config: catalogConfig,
@@ -254,6 +282,7 @@ async function resolvePluginImplicitProviders(
         ctx.resolveProviderAuth(providerId?.trim() || provider.id, options),
       timeoutMs: resolveLiveProviderCatalogTimeoutMs(ctx.env),
     });
+    emitPrewarmTrace(ctx.env, `plugin.${order}.${provider.id}`, performance.now() - pluginStart);
     if (!result) {
       continue;
     }
@@ -367,10 +396,10 @@ export async function resolveImplicitProviders(
   });
 
   for (const order of PLUGIN_DISCOVERY_ORDERS) {
-    mergeImplicitProviderSet(
-      providers,
-      await resolvePluginImplicitProviders(context, discoveryProviders, order),
-    );
+    const orderStart = performance.now();
+    const orderResult = await resolvePluginImplicitProviders(context, discoveryProviders, order);
+    emitPrewarmTrace(env, `order.${order}`, performance.now() - orderStart);
+    mergeImplicitProviderSet(providers, orderResult);
   }
 
   return providers;
