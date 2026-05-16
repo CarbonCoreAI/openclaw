@@ -176,7 +176,7 @@ export async function startGatewaySidecars(params: {
   defaultWorkspaceDir: string;
   deps: CliDeps;
   startChannels: () => Promise<void>;
-  log: { warn: (msg: string) => void };
+  log: { warn: (msg: string) => void; info?: (msg: string) => void };
   logHooks: {
     info: (msg: string) => void;
     warn: (msg: string) => void;
@@ -287,21 +287,56 @@ export async function startGatewaySidecars(params: {
     isTruthyEnvValue(process.env.OPENCLAW_SKIP_CHANNELS) ||
     isTruthyEnvValue(process.env.OPENCLAW_SKIP_PROVIDERS);
   await measureStartup(params.startupTrace, "sidecars.channels", async () => {
-    if (!skipChannels) {
+    if (skipChannels) {
+      params.logChannels.info(
+        "skipping channel start (OPENCLAW_SKIP_CHANNELS=1 or OPENCLAW_SKIP_PROVIDERS=1)",
+      );
+      return;
+    }
+    // ``OPENCLAW_PREWARM_DEFER=true`` flips the order so that channel
+    // listeners (kolo /inbound, imessage, slack, etc.) bind before
+    // ``prewarmConfiguredPrimaryModel`` runs.  Channels do not depend
+    // on prewarm having completed — the agent run path
+    // (pi-embedded-runner/run.ts) re-calls ``ensureOpenClawModelsJson``
+    // and ``resolveModelAsync`` per turn, idempotently.  Prewarm only
+    // exists to warm caches so the *first* agent turn after boot is
+    // fast.  In deployments where wake latency matters more than
+    // first-turn latency (e.g. koloclaw scratch, where suspend/wake
+    // happens many times an hour and the lifecycle gate that lets
+    // iOS/SMS pre-send waits for /inbound to bind), the trade-off is
+    // worth it: prewarm runs concurrently with the rest of boot and
+    // is almost always done before the user's first message arrives
+    // (human reaction time + network RTT >> typical prewarm cost).
+    //
+    // Errors from background prewarm are still surfaced via
+    // ``params.logChannels`` and do not block the wake.
+    if (isTruthyEnvValue(process.env.OPENCLAW_PREWARM_DEFER)) {
+      params.log.info?.("prewarm deferred (OPENCLAW_PREWARM_DEFER=1)");
+      const prewarm = prewarmConfiguredPrimaryModel({
+        cfg: params.cfg,
+        log: params.log,
+        startupTrace: params.startupTrace,
+      }).catch((err) => {
+        params.logChannels.error(`deferred prewarm failed: ${String(err)}`);
+      });
       try {
-        await prewarmConfiguredPrimaryModel({
-          cfg: params.cfg,
-          log: params.log,
-          startupTrace: params.startupTrace,
-        });
         await params.startChannels();
       } catch (err) {
         params.logChannels.error(`channel startup failed: ${String(err)}`);
       }
-    } else {
-      params.logChannels.info(
-        "skipping channel start (OPENCLAW_SKIP_CHANNELS=1 or OPENCLAW_SKIP_PROVIDERS=1)",
-      );
+      // Intentionally not awaited — prewarm continues in the background.
+      void prewarm;
+      return;
+    }
+    try {
+      await prewarmConfiguredPrimaryModel({
+        cfg: params.cfg,
+        log: params.log,
+        startupTrace: params.startupTrace,
+      });
+      await params.startChannels();
+    } catch (err) {
+      params.logChannels.error(`channel startup failed: ${String(err)}`);
     }
   });
 
