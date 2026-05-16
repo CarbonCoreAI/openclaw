@@ -63,8 +63,29 @@ async function hasGatewayStartupInternalHookListeners(): Promise<boolean> {
 
 async function prewarmConfiguredPrimaryModel(params: {
   cfg: OpenClawConfig;
-  log: { warn: (msg: string) => void };
+  log: { warn: (msg: string) => void; info?: (msg: string) => void };
+  startupTrace?: GatewayStartupTrace;
 }): Promise<void> {
+  // Opt-out: when the operator has determined that on-boot model
+  // pre-warming is on the wake critical path and lazy-on-first-request
+  // resolution is acceptable, ``OPENCLAW_DISABLE_PREWARM=true`` short-
+  // circuits the whole function.  The first agent turn after wake then
+  // pays the parse + resolve cost it would otherwise have paid at boot
+  // (typically a few hundred ms to a few seconds, depending on
+  // provider runtime hooks).  Measured on koloclaw scratch with
+  // ``OPENCLAW_GATEWAY_STARTUP_TRACE=true``: the ``sidecars.channels``
+  // span — into which this function is awaited — was ~33 s, and the
+  // gateway log between ``starting channels and sidecars`` and the
+  // first per-channel log line was completely silent (no progress
+  // output from this function, no error returns).  Surfacing an
+  // opt-out keeps the existing default behaviour intact for everyone
+  // who wants the warmup at boot time, while letting low-latency
+  // deployments skip it.
+  if (isTruthyEnvValue(process.env.OPENCLAW_DISABLE_PREWARM)) {
+    params.log.info?.("skipping model prewarm (OPENCLAW_DISABLE_PREWARM=1)");
+    return;
+  }
+
   const { resolveAgentModelPrimaryValue } = await import("../config/model-input.js");
   const explicitPrimary = resolveAgentModelPrimaryValue(params.cfg.agents?.defaults?.model)?.trim();
   if (!explicitPrimary) {
@@ -80,6 +101,16 @@ async function prewarmConfiguredPrimaryModel(params: {
   ) {
     return;
   }
+
+  // Per-step trace marks let an operator with
+  // ``OPENCLAW_GATEWAY_STARTUP_TRACE=true`` attribute time inside
+  // this function from the audit / log instead of needing to read
+  // the source.  Without these, the ~5 awaits below all roll up
+  // into the parent ``sidecars.channels`` span and the only signal
+  // is total elapsed time.  Each ``prewarm.*`` mark covers a single
+  // await; together they sum to the function's wall time.
+  const trace = params.startupTrace;
+
   const [
     { resolveOpenClawAgentDir },
     { DEFAULT_MODEL, DEFAULT_PROVIDER },
@@ -88,15 +119,17 @@ async function prewarmConfiguredPrimaryModel(params: {
     { ensureOpenClawModelsJson },
     { resolveModel, resolveModelAsync },
     { resolveEmbeddedAgentRuntime },
-  ] = await Promise.all([
-    import("../agents/agent-paths.js"),
-    import("../agents/defaults.js"),
-    import("../agents/harness/selection.js"),
-    import("../agents/model-selection.js"),
-    import("../agents/models-config.js"),
-    import("../agents/pi-embedded-runner/model.js"),
-    import("../agents/pi-embedded-runner/runtime.js"),
-  ]);
+  ] = await measureStartup(trace, "prewarm.imports", () =>
+    Promise.all([
+      import("../agents/agent-paths.js"),
+      import("../agents/defaults.js"),
+      import("../agents/harness/selection.js"),
+      import("../agents/model-selection.js"),
+      import("../agents/models-config.js"),
+      import("../agents/pi-embedded-runner/model.js"),
+      import("../agents/pi-embedded-runner/runtime.js"),
+    ]),
+  );
   const { provider, model } = resolveConfiguredModelRef({
     cfg: params.cfg,
     defaultProvider: DEFAULT_PROVIDER,
@@ -114,12 +147,18 @@ async function prewarmConfiguredPrimaryModel(params: {
   }
   const agentDir = resolveOpenClawAgentDir();
   try {
-    await ensureOpenClawModelsJson(params.cfg, agentDir);
-    const resolved = resolveModel(provider, model, agentDir, params.cfg, {
-      skipProviderRuntimeHooks: true,
-    });
+    await measureStartup(trace, "prewarm.ensure-models-json", () =>
+      ensureOpenClawModelsJson(params.cfg, agentDir),
+    );
+    const resolved = await measureStartup(trace, "prewarm.resolve-sync", async () =>
+      resolveModel(provider, model, agentDir, params.cfg, {
+        skipProviderRuntimeHooks: true,
+      }),
+    );
     if (!resolved.model) {
-      const asyncResolved = await resolveModelAsync(provider, model, agentDir, params.cfg);
+      const asyncResolved = await measureStartup(trace, "prewarm.resolve-async", () =>
+        resolveModelAsync(provider, model, agentDir, params.cfg),
+      );
       if (!asyncResolved.model) {
         throw new Error(
           resolved.error ?? asyncResolved.error ?? `Unknown model: ${provider}/${model}`,
@@ -253,6 +292,7 @@ export async function startGatewaySidecars(params: {
         await prewarmConfiguredPrimaryModel({
           cfg: params.cfg,
           log: params.log,
+          startupTrace: params.startupTrace,
         });
         await params.startChannels();
       } catch (err) {
