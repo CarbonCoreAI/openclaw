@@ -1512,9 +1512,16 @@ export async function runEmbeddedAttempt(
       };
 
       // Inject caller-supplied request metadata into the outbound options so
-      // the transport layer can forward it to the provider's `metadata` field
-      // (Anthropic Messages spec). Existing options.metadata wins on key
-      // collisions so deeper-layer overrides (e.g. user_id) are preserved.
+      // transports that consume `options.metadata` can forward it into the
+      // request body. Today that's the Anthropic Messages transport
+      // (`anthropic-transport-stream.ts`); the OpenAI transport reads its
+      // metadata from `resolveTransportTurnState` (see
+      // `transport-stream-shared.ts:mergeTransportMetadata`) and is not
+      // affected by this wrapper. The wrapper is transport-agnostic by
+      // design: any future transport that reads `options.metadata` will
+      // pick up the keys automatically. Existing `options.metadata` wins
+      // on key collisions so deeper-layer overrides (e.g. a `user_id`
+      // already set by the agent runtime) are preserved.
       if (params.requestMetadata && Object.keys(params.requestMetadata).length > 0) {
         const innerMetaStreamFn = activeSession.agent.streamFn;
         const callerMetadata = params.requestMetadata;

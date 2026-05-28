@@ -133,9 +133,12 @@ export type RunEmbeddedPiAgentParams = {
    * Caller-supplied metadata merged into the outbound Anthropic Messages
    * `metadata` field at the transport boundary. Each key/value flows
    * through verbatim so the LiteLLM proxy (or any downstream observer)
-   * can correlate the call with the originating session context.
+   * can correlate the call with the originating session context. Values
+   * are constrained to strings to match the Anthropic Messages metadata
+   * shape; coerce non-string values (e.g. numeric ids) to strings at the
+   * call site.
    */
-  requestMetadata?: Record<string, unknown>;
+  requestMetadata?: Record<string, string>;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
   silentExpected?: boolean;
