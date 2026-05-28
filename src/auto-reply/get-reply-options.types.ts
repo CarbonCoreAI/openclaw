@@ -152,4 +152,11 @@ export type GetReplyOptions = {
   hasRepliedRef?: { value: boolean };
   /** Override agent timeout in seconds (0 = no timeout). Threads through to resolveAgentTimeoutMs. */
   timeoutOverrideSeconds?: number;
+  /**
+   * Provider-pass-through request metadata. Forwarded to the embedded agent
+   * and merged into the outbound Anthropic Messages `metadata` field so the
+   * LiteLLM proxy (or any downstream observer) can correlate the call with
+   * the caller's session context.
+   */
+  requestMetadata?: Record<string, unknown>;
 };

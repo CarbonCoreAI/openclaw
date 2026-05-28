@@ -1511,6 +1511,24 @@ export async function runEmbeddedAttempt(
         return innerStreamFn(model, context, options);
       };
 
+      // Inject caller-supplied request metadata into the outbound options so
+      // the transport layer can forward it to the provider's `metadata` field
+      // (Anthropic Messages spec). Existing options.metadata wins on key
+      // collisions so deeper-layer overrides (e.g. user_id) are preserved.
+      if (params.requestMetadata && Object.keys(params.requestMetadata).length > 0) {
+        const innerMetaStreamFn = activeSession.agent.streamFn;
+        const callerMetadata = params.requestMetadata;
+        activeSession.agent.streamFn = (model, context, options) => {
+          const existingMetadata =
+            (options as { metadata?: Record<string, unknown> } | undefined)?.metadata ?? {};
+          const merged = {
+            ...options,
+            metadata: { ...callerMetadata, ...existingMetadata },
+          } as typeof options;
+          return innerMetaStreamFn(model, context, merged);
+        };
+      }
+
       // Some models emit tool names with surrounding whitespace (e.g. " read ").
       // pi-agent-core dispatches tool calls with exact string matching, so normalize
       // names on the live response stream before tool execution.

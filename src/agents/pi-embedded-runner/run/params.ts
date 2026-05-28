@@ -129,6 +129,13 @@ export type RunEmbeddedPiAgentParams = {
   internalEvents?: AgentInternalEvent[];
   inputProvenance?: InputProvenance;
   streamParams?: AgentStreamParams;
+  /**
+   * Caller-supplied metadata merged into the outbound Anthropic Messages
+   * `metadata` field at the transport boundary. Each key/value flows
+   * through verbatim so the LiteLLM proxy (or any downstream observer)
+   * can correlate the call with the originating session context.
+   */
+  requestMetadata?: Record<string, unknown>;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
   silentExpected?: boolean;

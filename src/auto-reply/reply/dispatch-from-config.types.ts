@@ -20,6 +20,13 @@ export type DispatchFromConfigParams = {
   formatAbortReplyTextResolver?: FormatAbortReplyText;
   /** Optional config override passed to getReplyFromConfig (e.g. per-sender timezone). */
   configOverride?: OpenClawConfig;
+  /**
+   * Provider-pass-through request metadata. Forwarded through the embedded
+   * agent into the outbound Anthropic Messages `metadata` field so the
+   * LiteLLM proxy (or any downstream observer) can correlate the call with
+   * the caller's session context.
+   */
+  requestMetadata?: Record<string, unknown>;
 };
 
 export type DispatchReplyFromConfig = (

@@ -896,6 +896,7 @@ export async function dispatchReplyFromConfig(
       ctx,
       {
         ...params.replyOptions,
+        requestMetadata: params.requestMetadata ?? params.replyOptions?.requestMetadata,
         typingPolicy: typing.typingPolicy,
         suppressTyping: typing.suppressTyping,
         onToolResult: (payload: ReplyPayload) => {
