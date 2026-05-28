@@ -1511,6 +1511,31 @@ export async function runEmbeddedAttempt(
         return innerStreamFn(model, context, options);
       };
 
+      // Inject caller-supplied request metadata into the outbound options so
+      // transports that consume `options.metadata` can forward it into the
+      // request body. Today that's the Anthropic Messages transport
+      // (`anthropic-transport-stream.ts`); the OpenAI transport reads its
+      // metadata from `resolveTransportTurnState` (see
+      // `transport-stream-shared.ts:mergeTransportMetadata`) and is not
+      // affected by this wrapper. The wrapper is transport-agnostic by
+      // design: any future transport that reads `options.metadata` will
+      // pick up the keys automatically. Existing `options.metadata` wins
+      // on key collisions so deeper-layer overrides (e.g. a `user_id`
+      // already set by the agent runtime) are preserved.
+      if (params.requestMetadata && Object.keys(params.requestMetadata).length > 0) {
+        const innerMetaStreamFn = activeSession.agent.streamFn;
+        const callerMetadata = params.requestMetadata;
+        activeSession.agent.streamFn = (model, context, options) => {
+          const existingMetadata =
+            (options as { metadata?: Record<string, unknown> } | undefined)?.metadata ?? {};
+          const merged = {
+            ...options,
+            metadata: { ...callerMetadata, ...existingMetadata },
+          } as typeof options;
+          return innerMetaStreamFn(model, context, merged);
+        };
+      }
+
       // Some models emit tool names with surrounding whitespace (e.g. " read ").
       // pi-agent-core dispatches tool calls with exact string matching, so normalize
       // names on the live response stream before tool execution.

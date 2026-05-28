@@ -413,4 +413,65 @@ describe("anthropic transport stream", () => {
       output_config: { effort: "xhigh" },
     });
   });
+
+  it("forwards caller-supplied metadata keys verbatim into the request body", async () => {
+    await runTransportStream(
+      makeAnthropicTransportModel(),
+      {
+        messages: [{ role: "user", content: "hello" }],
+      } as AnthropicStreamContext,
+      {
+        apiKey: "sk-ant-api",
+        metadata: {
+          user_id: "u-42",
+          kolo_session_key: "agent:main:kolo:group:abc-123",
+          kolo_org_id: "org-7",
+        },
+      } as AnthropicStreamOptions,
+    );
+
+    expect(latestAnthropicRequest().payload).toMatchObject({
+      metadata: {
+        user_id: "u-42",
+        kolo_session_key: "agent:main:kolo:group:abc-123",
+        kolo_org_id: "org-7",
+      },
+    });
+  });
+
+  it("omits metadata entirely when no caller metadata is supplied", async () => {
+    await runTransportStream(
+      makeAnthropicTransportModel(),
+      {
+        messages: [{ role: "user", content: "hello" }],
+      } as AnthropicStreamContext,
+      {
+        apiKey: "sk-ant-api",
+      } as AnthropicStreamOptions,
+    );
+
+    expect(latestAnthropicRequest().payload).not.toHaveProperty("metadata");
+  });
+
+  it("filters undefined and null metadata values", async () => {
+    await runTransportStream(
+      makeAnthropicTransportModel(),
+      {
+        messages: [{ role: "user", content: "hello" }],
+      } as AnthropicStreamContext,
+      {
+        apiKey: "sk-ant-api",
+        metadata: {
+          user_id: "u-7",
+          kolo_org_id: null as unknown as string,
+          kolo_skipped: undefined as unknown as string,
+        },
+      } as AnthropicStreamOptions,
+    );
+
+    const { payload } = latestAnthropicRequest();
+    expect(payload).toMatchObject({ metadata: { user_id: "u-7" } });
+    expect((payload.metadata as Record<string, unknown>).kolo_org_id).toBeUndefined();
+    expect((payload.metadata as Record<string, unknown>).kolo_skipped).toBeUndefined();
+  });
 });

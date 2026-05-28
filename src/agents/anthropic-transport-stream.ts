@@ -673,8 +673,20 @@ function buildAnthropicParams(
       params.thinking = { type: "disabled" };
     }
   }
-  if (options?.metadata && typeof options.metadata.user_id === "string") {
-    params.metadata = { user_id: options.metadata.user_id };
+  if (options?.metadata) {
+    // Forward any caller-supplied metadata keys to the Anthropic Messages body
+    // verbatim. The Anthropic API documents `user_id`, and downstream observers
+    // (e.g. the LiteLLM proxy) accept additional keys for session correlation.
+    const incoming = options.metadata;
+    const forwarded: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(incoming)) {
+      if (value !== undefined && value !== null) {
+        forwarded[key] = value;
+      }
+    }
+    if (Object.keys(forwarded).length > 0) {
+      params.metadata = forwarded;
+    }
   }
   if (options?.toolChoice) {
     params.tool_choice =

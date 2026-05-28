@@ -1043,6 +1043,7 @@ export async function runAgentTurnWithFallback(params: {
                 bootstrapContextRunKind: params.opts?.isHeartbeat ? "heartbeat" : "default",
                 images: params.opts?.images,
                 imageOrder: params.opts?.imageOrder,
+                requestMetadata: params.opts?.requestMetadata,
                 abortSignal: params.replyOperation?.abortSignal ?? params.opts?.abortSignal,
                 replyOperation: params.replyOperation,
                 blockReplyBreak: params.resolvedBlockStreamingBreak,

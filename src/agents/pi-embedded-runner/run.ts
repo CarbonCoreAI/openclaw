@@ -774,6 +774,7 @@ export async function runEmbeddedPiAgent(
             extraSystemPrompt: params.extraSystemPrompt,
             inputProvenance: params.inputProvenance,
             streamParams: params.streamParams,
+            requestMetadata: params.requestMetadata,
             ownerNumbers: params.ownerNumbers,
             enforceFinalTag: params.enforceFinalTag,
             silentExpected: params.silentExpected,
